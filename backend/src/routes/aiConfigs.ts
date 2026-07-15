@@ -49,9 +49,40 @@ function viduHeaders(apiKey?: string, withJson = false) {
   return headers
 }
 
-function buildProbe(serviceType: string, provider: string, baseUrl: string, model?: string, apiKey?: string) {
+function normalizeEndpointMode(value: unknown) {
+  return value === 'base-url' ? 'base-url' : 'append-v1'
+}
+
+function parseSettings(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function endpointModeFromSettings(value: unknown) {
+  return normalizeEndpointMode(parseSettings(value).endpoint_mode)
+}
+
+function buildProbe(serviceType: string, provider: string, baseUrl: string, model?: string, apiKey?: string, endpointMode = 'append-v1') {
   const p = provider.toLowerCase()
   const m = model || ''
+
+  if (p === 'openai-compatible' && endpointMode === 'base-url') {
+    return {
+      method: 'POST',
+      url: joinProviderUrl(baseUrl, '', '/chat/completions'),
+      headers: bearerHeaders(apiKey, true),
+      body: {
+        model: m,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+      },
+    }
+  }
 
   if (p === 'gemini') {
     const url = new URL(joinProviderUrl(baseUrl, '/v1beta', `/models/${m || 'gemini-2.5-flash'}:generateContent`))
@@ -131,6 +162,7 @@ app.get('/', async (c) => {
   const parsed = rows.map(r => ({
     ...toSnakeCase(r),
     model: r.model ? JSON.parse(r.model) : [],
+    endpoint_mode: endpointModeFromSettings(r.settings),
   }))
   return success(c, parsed)
 })
@@ -152,6 +184,7 @@ app.post('/', async (c) => {
     baseUrl: body.base_url || '',
     apiKey: body.api_key || '',
     model: JSON.stringify(body.model || []),
+    settings: body.endpoint_mode ? JSON.stringify({ endpoint_mode: normalizeEndpointMode(body.endpoint_mode) }) : null,
     priority: body.priority || 0,
     isActive: true,
     createdAt: ts,
@@ -164,6 +197,7 @@ app.post('/', async (c) => {
   return created(c, {
     ...toSnakeCase(row),
     model: row.model ? JSON.parse(row.model) : [],
+    endpoint_mode: endpointModeFromSettings(row.settings),
   })
 })
 
@@ -255,7 +289,14 @@ app.post('/test', async (c) => {
   }
 
   const model = Array.isArray(body.model) ? body.model[0] : body.model
-  const probe = buildProbe(body.service_type, body.provider, body.base_url, model, body.api_key)
+  const probe = buildProbe(
+    body.service_type,
+    body.provider,
+    body.base_url,
+    model,
+    body.api_key,
+    normalizeEndpointMode(body.endpoint_mode),
+  )
   const probeUrl = redactUrl(probe.url)
 
   logTaskProgress('AIConfig', 'probe-start', {
@@ -324,6 +365,7 @@ app.get('/:id', async (c) => {
   return success(c, {
     ...toSnakeCase(row),
     model: row.model ? JSON.parse(row.model) : [],
+    endpoint_mode: endpointModeFromSettings(row.settings),
   })
 })
 
@@ -332,6 +374,7 @@ app.put('/:id', async (c) => {
   const id = Number(c.req.param('id'))
   const body = await c.req.json()
   const updates: Record<string, any> = { updatedAt: now() }
+  const [existing] = db.select().from(schema.aiServiceConfigs).where(eq(schema.aiServiceConfigs.id, id)).all()
 
   if ('provider' in body) updates.provider = body.provider
   if ('name' in body) updates.name = body.name
@@ -340,6 +383,12 @@ app.put('/:id', async (c) => {
   if ('model' in body) updates.model = JSON.stringify(body.model)
   if ('priority' in body) updates.priority = body.priority
   if ('is_active' in body) updates.isActive = body.is_active
+  if ('endpoint_mode' in body) {
+    updates.settings = JSON.stringify({
+      ...parseSettings(existing?.settings),
+      endpoint_mode: normalizeEndpointMode(body.endpoint_mode),
+    })
+  }
 
   db.update(schema.aiServiceConfigs).set(updates).where(eq(schema.aiServiceConfigs.id, id)).run()
   return success(c)

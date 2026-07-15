@@ -111,6 +111,8 @@ skills/     — Agent 技能定义 (SKILL.md)
 | **视频** | MiniMax、火山引擎/Seedance、Vidu、阿里 |
 | **TTS** | MiniMax |
 
+自定义 OpenAI 兼容服务默认会补充 `/v1` 前缀。若厂商提供的 Base URL 已包含完整 API 前缀，例如火山方舟 Coding API 的 `https://ark.cn-beijing.volces.com/api/coding/v3`，在设置页选择“保持 Base URL 原样”。
+
 ---
 
 ## 🚀 快速开始

@@ -306,6 +306,10 @@
         </label>
         <label class="field"><span class="field-label">API Key</span><input v-model="cfgForm.api_key" class="input" type="password" placeholder="sk-..." /></label>
         <label class="field"><span class="field-label">Base URL</span><input v-model="cfgForm.base_url" class="input" placeholder="https://..." /></label>
+        <label v-if="cfgForm.provider === 'openai-compatible'" class="field">
+          <span class="field-label">Base URL 模式</span>
+          <BaseSelect v-model="cfgForm.endpointMode" :options="endpointModeOptions" />
+        </label>
         <div class="endpoint-hint">
           <span class="dim">实际端点前缀：</span>
           <span class="mono">{{ endpointHint }}</span>
@@ -418,7 +422,7 @@ const cfgEditId = ref(null)
 const presetDialog = ref(false)
 const cfgTesting = ref(false)
 const cfgTestResult = ref(null)
-const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0 })
+const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0, endpointMode: 'append-v1' })
 const huobaoForm = reactive({ apiKey: '' })
 const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'video', label: '视频' }, { type: 'audio', label: '音频' }]
 const providerOptionsByServiceType = {
@@ -448,6 +452,10 @@ const providerOptionsByServiceType = {
     { label: 'minimax', value: 'minimax' },
   ],
 }
+const endpointModeOptions = [
+  { label: '自动添加 /v1', value: 'append-v1' },
+  { label: '保持 Base URL 原样', value: 'base-url' },
+]
 const providerSelectOptions = computed(() => {
   const options = providerOptionsByServiceType[cfgForm.service_type] || []
   if (cfgForm.provider && !options.some(option => option.value === cfgForm.provider)) {
@@ -464,6 +472,7 @@ const serviceMeta = {
 const providerPresets = {
   text: {
     'openai-compatible': { label: '自定义 OpenAI 兼容', baseUrl: '', models: [] },
+    'openai-compatible-ark': { label: '方舟 Coding API', baseUrl: 'https://ark.cn-beijing.volces.com/api/coding/v3', models: [] },
     chatfire: { label: 'ChatFire 推荐', baseUrl: 'https://api.chatfire.site', models: ['gemini-3-pro-preview'] },
     openrouter: { label: 'OpenRouter 推荐', baseUrl: 'https://openrouter.ai/api', models: ['google/gemini-3-flash-preview'] },
     openai: { label: 'OpenAI 推荐', baseUrl: 'https://api.openai.com', models: ['gpt-4.1-mini'] },
@@ -503,6 +512,7 @@ const endpointPrefixes = {
 const endpointHint = computed(() => {
   const provider = cfgForm.provider
   const base = cfgForm.base_url || 'https://...'
+  if (provider === 'openai-compatible' && cfgForm.endpointMode === 'base-url') return base
   const prefix = endpointPrefixes[provider] || ''
   if (!provider) return '选择服务商后显示推荐端点前缀'
   return `${base}${prefix}`
@@ -518,10 +528,11 @@ function presetsByType(type) {
 function applyProviderPreset(type, provider) {
   const preset = providerPresets[type]?.[provider]
   if (!preset) return
-  cfgForm.provider = provider
+  cfgForm.provider = provider === 'openai-compatible-ark' ? 'openai-compatible' : provider
   cfgForm.base_url = preset.baseUrl
   cfgForm.modelStr = preset.models.join(', ')
   cfgForm.name = `${preset.label}-${serviceMeta[type].label}`
+  cfgForm.endpointMode = provider === 'openai-compatible-ark' ? 'base-url' : 'append-v1'
 }
 
 async function loadCfgs() { try { cfgs.value = await aiConfigAPI.list() } catch (e) { toast.error(e.message) } }
@@ -530,7 +541,7 @@ async function delCfg(id) { await aiConfigAPI.del(id); toast.success('已删除'
 function startAddCfg(t) {
   cfgEditId.value = null
   cfgTestResult.value = null
-  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: t, priority: 0 })
+  Object.assign(cfgForm, { name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: t, priority: 0, endpointMode: 'append-v1' })
   const firstPreset = presetsByType(t)[0]
   if (firstPreset) applyProviderPreset(t, firstPreset.provider)
   cfgDialog.value = true
@@ -546,6 +557,7 @@ function startEditCfg(c) {
     modelStr: fmtModel(c.model),
     service_type: c.service_type,
     priority: c.priority ?? 0,
+    endpointMode: c.endpoint_mode || 'append-v1',
   })
   cfgDialog.value = true
 }
@@ -568,6 +580,7 @@ async function testDraftCfg() {
     api_key: cfgForm.api_key,
     base_url: cfgForm.base_url,
     model: cfgForm.modelStr.split(',').map(s => s.trim()).filter(Boolean),
+    endpoint_mode: cfgForm.provider === 'openai-compatible' ? cfgForm.endpointMode : undefined,
   })
 }
 async function testExistingCfg(c) {
@@ -578,14 +591,16 @@ async function testExistingCfg(c) {
     api_key: c.api_key || '',
     base_url: c.base_url || '',
     model: Array.isArray(c.model) ? c.model : [],
+    endpoint_mode: c.provider === 'openai-compatible' ? (c.endpoint_mode || 'append-v1') : undefined,
   })
 }
 async function saveCfg() {
   if (!cfgForm.provider) { toast.warning('选择服务商'); return }
   const models = cfgForm.modelStr.split(',').map(s => s.trim()).filter(Boolean)
   try {
-    if (cfgEditId.value) await aiConfigAPI.update(cfgEditId.value, { name: cfgForm.name, provider: cfgForm.provider, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority })
-    else await aiConfigAPI.create({ service_type: cfgForm.service_type, provider: cfgForm.provider, name: cfgForm.name || `${cfgForm.provider}-${cfgForm.service_type}`, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority })
+    const endpointMode = cfgForm.provider === 'openai-compatible' ? { endpoint_mode: cfgForm.endpointMode } : {}
+    if (cfgEditId.value) await aiConfigAPI.update(cfgEditId.value, { name: cfgForm.name, provider: cfgForm.provider, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority, ...endpointMode })
+    else await aiConfigAPI.create({ service_type: cfgForm.service_type, provider: cfgForm.provider, name: cfgForm.name || `${cfgForm.provider}-${cfgForm.service_type}`, api_key: cfgForm.api_key, base_url: cfgForm.base_url, model: models, priority: cfgForm.priority, ...endpointMode })
     cfgDialog.value = false; toast.success('已保存'); loadCfgs()
   } catch (e) { toast.error(e.message) }
 }

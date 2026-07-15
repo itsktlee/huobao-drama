@@ -13,10 +13,15 @@ export interface AIConfig {
   baseUrl: string
   apiKey: string
   model: string
+  endpointMode: 'append-v1' | 'base-url'
 }
 
 export function getTextProviderBaseUrl(config: AIConfig) {
   const provider = config.provider.toLowerCase()
+
+  if (provider === 'openai-compatible' && config.endpointMode === 'base-url') {
+    return config.baseUrl
+  }
 
   if (provider === 'openai' || provider === 'openai-compatible' || provider === 'openrouter' || provider === 'chatfire') {
     return joinProviderUrl(config.baseUrl, '/v1', '')
@@ -31,6 +36,14 @@ export function getTextProviderBaseUrl(config: AIConfig) {
   }
 
   return config.baseUrl
+}
+
+function getEndpointMode(settings: string | null): 'append-v1' | 'base-url' {
+  try {
+    return JSON.parse(settings || '{}')?.endpoint_mode === 'base-url' ? 'base-url' : 'append-v1'
+  } catch {
+    return 'append-v1'
+  }
 }
 
 export function getActiveConfig(serviceType: ServiceType): AIConfig | null {
@@ -59,6 +72,7 @@ export function getActiveConfig(serviceType: ServiceType): AIConfig | null {
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
     model: models[0] || '',
+    endpointMode: getEndpointMode(active.settings),
   }
 }
 
@@ -101,5 +115,6 @@ export function getConfigById(id: number): AIConfig | null {
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: models[0] || '',
+    endpointMode: getEndpointMode(row.settings),
   }
 }
