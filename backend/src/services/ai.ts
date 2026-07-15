@@ -18,7 +18,7 @@ export interface AIConfig {
 export function getTextProviderBaseUrl(config: AIConfig) {
   const provider = config.provider.toLowerCase()
 
-  if (provider === 'openai' || provider === 'openrouter' || provider === 'chatfire') {
+  if (provider === 'openai' || provider === 'openai-compatible' || provider === 'openrouter' || provider === 'chatfire') {
     return joinProviderUrl(config.baseUrl, '/v1', '')
   }
 

@@ -421,8 +421,40 @@ const cfgTestResult = ref(null)
 const cfgForm = reactive({ name: '', provider: '', api_key: '', base_url: '', modelStr: '', service_type: 'text', priority: 0 })
 const huobaoForm = reactive({ apiKey: '' })
 const serviceTypes = [{ type: 'text', label: '文本' }, { type: 'image', label: '图片' }, { type: 'video', label: '视频' }, { type: 'audio', label: '音频' }]
-const providers = ['ali', 'chatfire', 'gemini', 'minimax', 'openai', 'openrouter', 'vidu', 'volcengine']
-const providerSelectOptions = computed(() => providers.map(p => ({ label: p, value: p })))
+const providerOptionsByServiceType = {
+  text: [
+    { label: 'OpenAI 兼容（自定义）', value: 'openai-compatible' },
+    { label: 'openai', value: 'openai' },
+    { label: 'openrouter', value: 'openrouter' },
+    { label: 'chatfire', value: 'chatfire' },
+    { label: 'ali', value: 'ali' },
+    { label: 'volcengine', value: 'volcengine' },
+  ],
+  image: [
+    { label: 'openai', value: 'openai' },
+    { label: 'chatfire', value: 'chatfire' },
+    { label: 'gemini', value: 'gemini' },
+    { label: 'minimax', value: 'minimax' },
+    { label: 'volcengine', value: 'volcengine' },
+    { label: 'ali', value: 'ali' },
+  ],
+  video: [
+    { label: 'minimax', value: 'minimax' },
+    { label: 'volcengine', value: 'volcengine' },
+    { label: 'vidu', value: 'vidu' },
+    { label: 'ali', value: 'ali' },
+  ],
+  audio: [
+    { label: 'minimax', value: 'minimax' },
+  ],
+}
+const providerSelectOptions = computed(() => {
+  const options = providerOptionsByServiceType[cfgForm.service_type] || []
+  if (cfgForm.provider && !options.some(option => option.value === cfgForm.provider)) {
+    return [{ label: cfgForm.provider, value: cfgForm.provider }, ...options]
+  }
+  return options
+})
 const serviceMeta = {
   text: { label: '文本', desc: '剧本改写、角色场景提取、分镜拆解等 Agent 文本能力' },
   image: { label: '图片', desc: '角色图、场景图、镜头图与首尾帧等静态图像生成' },
@@ -431,6 +463,7 @@ const serviceMeta = {
 }
 const providerPresets = {
   text: {
+    'openai-compatible': { label: '自定义 OpenAI 兼容', baseUrl: '', models: [] },
     chatfire: { label: 'ChatFire 推荐', baseUrl: 'https://api.chatfire.site', models: ['gemini-3-pro-preview'] },
     openrouter: { label: 'OpenRouter 推荐', baseUrl: 'https://openrouter.ai/api', models: ['google/gemini-3-flash-preview'] },
     openai: { label: 'OpenAI 推荐', baseUrl: 'https://api.openai.com', models: ['gpt-4.1-mini'] },
@@ -456,6 +489,7 @@ const huobaoPresetCards = [
   { serviceType: 'audio', label: '音频', provider: 'minimax', baseUrl: 'https://api.chatfire.site/minimax', model: 'speech-2.8-hd', priority: 97 },
 ]
 const endpointPrefixes = {
+  'openai-compatible': '/v1',
   chatfire: '/v1',
   openai: '/v1',
   openrouter: '/v1',

@@ -106,6 +106,7 @@ skills/     — Agent 技能定义 (SKILL.md)
 
 | 类型 | 支持厂商 |
 |---|---|
+| **文本** | OpenAI、OpenRouter、Chatfire、以及任意 OpenAI Chat Completions 兼容服务 |
 | **图片** | OpenAI、Gemini、MiniMax、火山引擎、阿里、Chatfire |
 | **视频** | MiniMax、火山引擎/Seedance、Vidu、阿里 |
 | **TTS** | MiniMax |
